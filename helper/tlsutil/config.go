@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"sync"
 	"time"
+
+	"github.com/hashicorp/nomad/nomad/structs/config"
 )
 
 // RegionSpecificWrapper is used to invoke a static Region and turns a
@@ -30,6 +33,8 @@ type Wrapper func(conn net.Conn) (net.Conn, error)
 
 // Config used to create tls.Config
 type Config struct {
+	configLock sync.RWMutex
+
 	// VerifyIncoming is used to verify the authenticity of incoming connections.
 	// This means that TCP requests are forbidden, only allowing for TLS. TLS connections
 	// must match a provided certificate authority. This can be used to force client auth.
@@ -57,6 +62,10 @@ type Config struct {
 	// Must be provided to serve TLS connections.
 	CertFile string
 
+	// Stores a TLS certificate that has been loaded given the information in the
+	// configuration. This can be updated via config.Reload()
+	Certificate *tls.Certificate
+
 	// KeyFile is used to provide a TLS key that is used for serving TLS connections.
 	// Must be provided to serve TLS connections.
 	KeyFile string
@@ -82,21 +91,39 @@ func (c *Config) AppendCA(pool *x509.CertPool) error {
 	return nil
 }
 
-// KeyPair is used to open and parse a certificate and key file
-func (c *Config) KeyPair() (*tls.Certificate, error) {
+// Update syncs a new TLS config to a previously-created TLS config helper
+func (c *Config) Update(newConfig *config.TLSConfig) {
+	c.configLock.Lock()
+
+	c.CAFile = newConfig.CAFile
+	c.CertFile = newConfig.CertFile
+	c.KeyFile = newConfig.KeyFile
+	c.configLock.Unlock()
+}
+
+// LoadKeyPair is used to open and parse a certificate and key file
+func (c *Config) LoadKeyPair() (*tls.Certificate, error) {
+	c.configLock.Lock()
+
 	if c.CertFile == "" || c.KeyFile == "" {
 		return nil, nil
 	}
+
 	cert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to load cert/key pair: %v", err)
 	}
-	return &cert, err
+
+	c.configLock.Unlock()
+
+	c.Certificate = &cert
+	return c.Certificate, nil
 }
 
 // OutgoingTLSConfig generates a TLS configuration for outgoing
 // requests. It will return a nil config if this configuration should
-// not use TLS for outgoing connections.
+// not use TLS for outgoing connections. Provides a callback to
+// fetch certificates, allowing for reloading on the fly.
 func (c *Config) OutgoingTLSConfig() (*tls.Config, error) {
 	// If VerifyServerHostname is true, that implies VerifyOutgoing
 	if c.VerifyServerHostname {
@@ -125,15 +152,18 @@ func (c *Config) OutgoingTLSConfig() (*tls.Config, error) {
 		return nil, err
 	}
 
-	// Add cert/key
-	cert, err := c.KeyPair()
+	cert, err := c.LoadKeyPair()
 	if err != nil {
 		return nil, err
 	} else if cert != nil {
-		tlsConfig.Certificates = []tls.Certificate{*cert}
+		tlsConfig.GetCertificate = c.getOutgoingCertificate
 	}
 
 	return tlsConfig, nil
+}
+
+func (c *Config) getOutgoingCertificate(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+	return c.Certificate, nil
 }
 
 // OutgoingTLSWrapper returns a a Wrapper based on the OutgoingTLS
@@ -236,7 +266,7 @@ func (c *Config) IncomingTLSConfig() (*tls.Config, error) {
 	}
 
 	// Add cert/key
-	cert, err := c.KeyPair()
+	cert, err := c.LoadKeyPair()
 	if err != nil {
 		return nil, err
 	} else if cert != nil {

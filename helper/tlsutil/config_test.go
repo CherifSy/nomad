@@ -46,9 +46,9 @@ func TestConfig_CACertificate_Valid(t *testing.T) {
 	}
 }
 
-func TestConfig_KeyPair_None(t *testing.T) {
+func TestConfig_LoadKeyPair_None(t *testing.T) {
 	conf := &Config{}
-	cert, err := conf.KeyPair()
+	cert, err := conf.LoadKeyPair()
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -57,12 +57,12 @@ func TestConfig_KeyPair_None(t *testing.T) {
 	}
 }
 
-func TestConfig_KeyPair_Valid(t *testing.T) {
+func TestConfig_LoadKeyPair_Valid(t *testing.T) {
 	conf := &Config{
 		CertFile: foocert,
 		KeyFile:  fookey,
 	}
-	cert, err := conf.KeyPair()
+	cert, err := conf.LoadKeyPair()
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -144,20 +144,27 @@ func TestConfig_OutgoingTLS_WithKeyPair(t *testing.T) {
 		CertFile:       foocert,
 		KeyFile:        fookey,
 	}
-	tls, err := conf.OutgoingTLSConfig()
+	tlsConf, err := conf.OutgoingTLSConfig()
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	if tls == nil {
+	if tlsConf == nil {
 		t.Fatalf("expected config")
 	}
-	if len(tls.RootCAs.Subjects()) != 1 {
+	if len(tlsConf.RootCAs.Subjects()) != 1 {
 		t.Fatalf("expect root cert")
 	}
-	if !tls.InsecureSkipVerify {
+	if !tlsConf.InsecureSkipVerify {
 		t.Fatalf("should skip verification")
 	}
-	if len(tls.Certificates) != 1 {
+
+	clientHelloInfo := &tls.ClientHelloInfo{}
+	cert, err := tlsConf.GetCertificate(clientHelloInfo)
+	// TODO add asert package
+	if err != nil {
+		t.Fatalf("expected no error")
+	}
+	if cert == nil {
 		t.Fatalf("expected client cert")
 	}
 }
