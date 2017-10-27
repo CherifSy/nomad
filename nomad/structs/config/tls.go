@@ -33,6 +33,9 @@ type TLSConfig struct {
 	VerifyHTTPSClient bool `mapstructure:"verify_https_client"`
 }
 
+// TODO this should have the callbacks for GetCertificate and
+// GetClientCertificate, and also have a Reload() function
+
 // Merge is used to merge two TLS configs together
 func (t *TLSConfig) Merge(b *TLSConfig) *TLSConfig {
 	result := *t

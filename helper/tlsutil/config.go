@@ -136,6 +136,8 @@ func (c *Config) OutgoingTLSConfig() (*tls.Config, error) {
 	return tlsConfig, nil
 }
 
+// TODO this should change to add callbacks for a client tls config
+
 // OutgoingTLSWrapper returns a a Wrapper based on the OutgoingTLS
 // configuration. If hostname verification is on, the wrapper
 // will properly generate the dynamic server name for verification.

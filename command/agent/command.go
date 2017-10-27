@@ -623,6 +623,9 @@ WAIT:
 	}
 }
 
+// TODO i guess we'll have to handle this for both client and server?? confused
+// about how Reload() on the server side works
+
 // handleReload is invoked when we should reload our configs, e.g. SIGHUP
 func (c *Command) handleReload(config *Config) *Config {
 	c.Ui.Output("Reloading configuration...")
@@ -655,6 +658,8 @@ func (c *Command) handleReload(config *Config) *Config {
 			}
 		}
 	}
+	// i guess here we'll need to add an else for if it is a client? or we can
+	// make this more generalizible on the client side.
 
 	return newConf
 }
